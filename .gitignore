@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*service-account*.json
+*credentials*.json
+google-application-credentials*.json
+
+# Logs and runtime output
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test and build artifacts
+coverage/
+dist/
+build/
+.nyc_output/
+
+# Terraform local state and generated archives
+deployment/terraform/.terraform/
+deployment/terraform/.terraform.lock.hcl
+deployment/terraform/terraform.tfstate
+deployment/terraform/terraform.tfstate.*
+deployment/terraform/*.tfvars
+deployment/terraform/*.tfvars.json
+deployment/terraform/function.zip
+.terraform-build/
+
+# Local tool/cache files
+.workbuddy/
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+docs/
+PROJECT_DESIGN.md

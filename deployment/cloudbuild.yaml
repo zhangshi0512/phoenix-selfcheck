@@ -1,0 +1,46 @@
+# Google Cloud Build Configuration for SelfCheck
+# Deploys backend as Cloud Function (Gen2) + Agent Builder config
+
+steps:
+  # Install dependencies (package.json is at root level)
+  - name: 'node:20'
+    entrypoint: npm
+    args: ['install']
+
+  # Run tests
+  - name: 'node:20'
+    entrypoint: npm
+    args: ['test']
+
+  # Deploy to Cloud Functions (Gen2)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud functions deploy selfcheck-webhook \
+          --gen2 \
+          --runtime nodejs20 \
+          --trigger-http \
+          --allow-unauthenticated \
+          --entry-point webhook \
+          --region us-central1 \
+          --memory 512MB \
+          --timeout 120s \
+          --min-instances 0 \
+          --max-instances 10 \
+          --set-env-vars "GEMINI_API_KEY=$_GEMINI_API_KEY,GOOGLE_API_KEY=$_GEMINI_API_KEY,ARIZE_PROJECT_ID=$_ARIZE_PROJECT_ID,ARIZE_API_KEY=$_ARIZE_API_KEY,WEBHOOK_API_KEY=$_WEBHOOK_API_KEY,NODE_ENV=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID"
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+# Timeout
+timeout: 1200s
+
+# Substitute variables (set in Cloud Build trigger)
+substitutions:
+  _GEMINI_API_KEY: ''
+  _ARIZE_PROJECT_ID: ''
+  _ARIZE_API_KEY: ''
+  _WEBHOOK_API_KEY: ''

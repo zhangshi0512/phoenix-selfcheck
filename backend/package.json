@@ -1,0 +1,55 @@
+{
+  "name": "selfcheck-backend",
+  "version": "2.0.0",
+  "description": "Backend for SelfCheck Phase 2 - Enhanced self-improving agent with A/B testing, multi-language, real DB, monitoring & alerting",
+  "main": "functions/webhook.js",
+  "scripts": {
+    "start": "functions-framework --target=webhook --port=8080",
+    "dev": "nodemon --exec \"npm start\"",
+    "deploy": "gcloud functions deploy selfcheck-webhook --runtime nodejs20 --trigger-http --allow-unauthenticated --set-env-vars=ARIZE_API_KEY=$ARIZE_API_KEY,ARIZE_PROJECT_ID=$ARIZE_PROJECT_ID",
+    "test": "jest",
+    "lint": "eslint functions/**/*.js",
+    "format": "prettier --write functions/**/*.js"
+  },
+  "keywords": [
+    "google-cloud",
+    "agent-builder",
+    "arize-phoenix",
+    "ai-agent",
+    "self-improving"
+  ],
+  "author": "SelfCheck Team",
+  "license": "MIT",
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.0.0",
+    "@google-cloud/logging": "^11.0.0",
+    "@google-cloud/secret-manager": "^5.0.0",
+    "@google-cloud/trace-agent": "^7.0.0",
+    "@google-cloud/firestore": "^7.0.0",
+    "@google-cloud/monitoring": "^4.0.0",
+    "@google-cloud/translate": "^8.0.0",
+    "@arizeai/openinference": "^0.1.0",
+    "@opentelemetry/api": "^1.7.0",
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0",
+    "winston": "^3.11.0",
+    "joi": "^17.9.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "supertest": "^6.3.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/Google-cloud-ai-agent.git"
+  }
+}

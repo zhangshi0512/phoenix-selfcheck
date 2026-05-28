@@ -1,0 +1,36 @@
+{
+  "name": "selfcheck-agent",
+  "version": "2.0.0",
+  "description": "Self-Improving Customer Service Agent for Google Cloud Rapid Agent Hackathon (Arize Track)",
+  "main": "backend/index.js",
+  "scripts": {
+    "start": "node backend/index.js",
+    "dev": "nodemon backend/index.js",
+    "test": "jest --coverage",
+    "test:unit": "jest tests/",
+    "lint": "eslint backend/ --ext .js"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.0",
+    "@google-cloud/firestore": "^7.0.0",
+    "@google-cloud/functions-framework": "^3.0.0",
+    "@google-cloud/logging": "^11.0.0",
+    "@google-cloud/monitoring": "^4.0.0",
+    "@google-cloud/secret-manager": "^5.0.0",
+    "@google-cloud/translate": "^8.0.0",
+    "@google/genai": "^2.6.0",
+    "@opentelemetry/api": "^1.7.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.48.0",
+    "@opentelemetry/resources": "^1.21.0",
+    "@opentelemetry/sdk-trace-base": "^1.21.0",
+    "@opentelemetry/sdk-trace-node": "^1.21.0",
+    "@opentelemetry/semantic-conventions": "^1.21.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "nodemon": "^3.0.0",
+    "eslint": "^8.0.0"
+  }
+}

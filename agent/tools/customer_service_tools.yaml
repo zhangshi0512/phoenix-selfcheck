@@ -1,0 +1,208 @@
+# Customer Service Tools for SelfCheck Agent
+# Phase 1: Basic customer service functionality
+
+apiVersion: agent.cloud.google.com/v1
+kind: Tool
+metadata:
+  name: customer-service-tools
+  displayName: Customer Service Tools
+  description: Tools for handling common customer service inquiries
+  version: 1.0.0
+
+spec:
+  tools:
+    # Product Information Tool
+    - name: get_product_info
+      displayName: Get Product Information
+      description: Retrieve information about products and services
+      inputSchema:
+        type: object
+        properties:
+          product_id:
+            type: string
+            description: "Product ID or SKU"
+          category:
+            type: string
+            description: "Product category"
+            enum: ["electronics", "software", "subscription", "hardware"]
+        required: ["product_id"]
+      outputSchema:
+        type: object
+        properties:
+          product_name:
+            type: string
+          description:
+            type: string
+          price:
+            type: number
+          availability:
+            type: string
+            enum: ["in_stock", "out_of_stock", "pre_order"]
+          features:
+            type: array
+            items:
+              type: string
+      implementation:
+        type: webhook
+        webhook:
+          url: "${BACKEND_URL}/tools/product-info"
+          httpMethod: POST
+    
+    # Order Status Tool
+    - name: check_order_status
+      displayName: Check Order Status
+      description: Check the status of a customer's order
+      inputSchema:
+        type: object
+        properties:
+          order_id:
+            type: string
+            description: "Order ID or tracking number"
+          email:
+            type: string
+            description: "Customer email for verification"
+            format: email
+        required: ["order_id"]
+      outputSchema:
+        type: object
+        properties:
+          status:
+            type: string
+            enum: ["processing", "shipped", "delivered", "cancelled", "returned"]
+          estimated_delivery:
+            type: string
+            format: date
+          tracking_url:
+            type: string
+          items:
+            type: array
+            items:
+              type: object
+              properties:
+                name: {type: string}
+                quantity: {type: integer}
+                status: {type: string}
+      implementation:
+        type: webhook
+        webhook:
+          url: "${BACKEND_URL}/tools/order-status"
+          httpMethod: POST
+    
+    # FAQ Search Tool
+    - name: search_faq
+      displayName: Search FAQ
+      description: Search the knowledge base for frequently asked questions
+      inputSchema:
+        type: object
+        properties:
+          query:
+            type: string
+            description: "Search query or question"
+          category:
+            type: string
+            description: "FAQ category"
+            enum: ["billing", "technical", "account", "shipping", "returns"]
+        required: ["query"]
+      outputSchema:
+        type: object
+        properties:
+          results:
+            type: array
+            items:
+              type: object
+              properties:
+                question: {type: string}
+                answer: {type: string}
+                relevance_score: {type: number}
+                category: {type: string}
+          suggested_actions:
+            type: array
+            items:
+              type: string
+      implementation:
+        type: webhook
+        webhook:
+          url: "${BACKEND_URL}/tools/search-faq"
+          httpMethod: POST
+    
+    # Create Support Ticket Tool
+    - name: create_support_ticket
+      displayName: Create Support Ticket
+      description: Create a new support ticket for complex issues
+      inputSchema:
+        type: object
+        properties:
+          issue_type:
+            type: string
+            description: "Type of issue"
+            enum: ["technical", "billing", "account", "feature_request", "bug"]
+          description:
+            type: string
+            description: "Detailed description of the issue"
+          priority:
+            type: string
+            description: "Priority level"
+            enum: ["low", "medium", "high", "urgent"]
+            default: "medium"
+          customer_email:
+            type: string
+            description: "Customer email for updates"
+            format: email
+        required: ["issue_type", "description"]
+      outputSchema:
+        type: object
+        properties:
+          ticket_id:
+            type: string
+          status:
+            type: string
+          estimated_response_time:
+            type: string
+          support_agent_assigned:
+            type: boolean
+      implementation:
+        type: webhook
+        webhook:
+          url: "${BACKEND_URL}/tools/create-ticket"
+          httpMethod: POST
+    
+    # Refund/Return Tool
+    - name: initiate_refund
+      displayName: Initiate Refund or Return
+      description: Start a refund or return process for an order
+      inputSchema:
+        type: object
+        properties:
+          order_id:
+            type: string
+            description: "Order ID for the refund"
+          reason:
+            type: string
+            description: "Reason for refund/return"
+            enum: ["defective", "wrong_item", "changed_mind", "late_delivery"]
+          items:
+            type: array
+            items:
+              type: object
+              properties:
+                product_id: {type: string}
+                quantity: {type: integer}
+        required: ["order_id", "reason"]
+      outputSchema:
+        type: object
+        properties:
+          refund_id:
+            type: string
+          estimated_amount:
+            type: number
+          processing_time:
+            type: string
+          instructions:
+            type: array
+            items:
+              type: string
+      implementation:
+        type: webhook
+        webhook:
+          url: "${BACKEND_URL}/tools/initiate-refund"
+          httpMethod: POST

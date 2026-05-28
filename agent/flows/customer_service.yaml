@@ -1,0 +1,309 @@
+# Customer Service Conversation Flow
+# Phase 1: Basic customer service conversation patterns
+
+apiVersion: agent.cloud.google.com/v1
+kind: Flow
+metadata:
+  name: customer-service-flow
+  displayName: Customer Service Conversation Flow
+  description: Main conversation flow for handling customer service inquiries
+  version: 1.0.0
+
+spec:
+  # Initial greeting and setup
+  startPage:
+    name: welcome
+    displayName: Welcome
+    entryFulfillment:
+      messages:
+        - text:
+            text:
+              - "Hello! I'm SelfCheck, your AI customer service assistant. I'm here to help you with any questions or issues you may have. How can I assist you today?"
+    transitionRoutes:
+      - condition: $session.params.intent = "product_info"
+        targetPage: product_info_page
+      - condition: $session.params.intent = "order_status"
+        targetPage: order_status_page
+      - condition: $session.params.intent = "faq_search"
+        targetPage: faq_search_page
+      - condition: $session.params.intent = "create_ticket"
+        targetPage: create_ticket_page
+      - condition: $session.params.intent = "refund_return"
+        targetPage: refund_return_page
+      - condition: true
+        targetPage: general_inquiry_page
+
+  # Product Information Page
+  - name: product_info_page
+    displayName: Product Information
+    entryFulfillment:
+      messages:
+        - text:
+            text:
+              - "I can help you find information about our products. Could you tell me which product you're interested in, or provide a product ID?"
+    form:
+      parameters:
+        - name: product_id
+          displayName: Product ID
+          entityType: "@sys.any"
+          required: true
+          fillBehavior:
+            initialPromptFulfillment:
+              messages:
+                - text:
+                    text:
+                      - "What's the product ID or name?"
+            repromptEventHandlers:
+              - event: sys.no-match-1
+                triggerFulfillment:
+                  messages:
+                    - text:
+                        text:
+                          - "I didn't catch that. Could you please provide the product ID or tell me what product you're looking for?"
+      eventHandlers:
+        - event: sys.no-input-1
+          triggerFulfillment:
+            messages:
+              - text:
+                  text:
+                    - "Are you still there? I'm ready to help you find product information."
+    transitionRoutes:
+      - condition: $page.params.status = "FINAL"
+        targetPage: product_info_results
+
+  # Product Information Results Page
+  - name: product_info_results
+    displayName: Product Information Results
+    entryFulfillment:
+      setParameterActions:
+        - parameter: product_info
+          value: $tools.get_product_info($page.params.product_id)
+      messages:
+        - text:
+            text:
+              - "Here's what I found about {{$page.params.product_id}}:"
+              - "{{$session.params.product_info.product_name}} - {{$session.params.product_info.description}}"
+              - "Price: ${{$session.params.product_info.price}}"
+              - "Availability: {{$session.params.product_info.availability}}"
+              - "Features: {{join($session.params.product_info.features, ', ')}}"
+              - "\nIs there anything else I can help you with?"
+    transitionRoutes:
+      - condition: true
+        targetPage: follow_up_question
+
+  # Order Status Page
+  - name: order_status_page
+    displayName: Order Status
+    entryFulfillment:
+      messages:
+        - text:
+            text:
+              - "I can check the status of your order. Please provide your order ID."
+    form:
+      parameters:
+        - name: order_id
+          displayName: Order ID
+          entityType: "@sys.any"
+          required: true
+        - name: email
+          displayName: Email
+          entityType: "@sys.email"
+          required: false
+    transitionRoutes:
+      - condition: $page.params.status = "FINAL"
+        targetPage: order_status_results
+
+  # Order Status Results Page
+  - name: order_status_results
+    displayName: Order Status Results
+    entryFulfillment:
+      setParameterActions:
+        - parameter: order_status
+          value: $tools.check_order_status($page.params.order_id, $page.params.email)
+      messages:
+        - text:
+            text:
+              - "Here's the current status of order {{$page.params.order_id}}:"
+              - "Status: {{$session.params.order_status.status}}"
+              - "{{if($session.params.order_status.estimated_delivery, 'Estimated delivery: ' + $session.params.order_status.estimated_delivery, '')}}"
+              - "{{if($session.params.order_status.tracking_url, 'Tracking: ' + $session.params.order_status.tracking_url, '')}}"
+              - "\nIs there anything else you'd like to know about your order?"
+    transitionRoutes:
+      - condition: true
+        targetPage: follow_up_question
+
+  # FAQ Search Page
+  - name: faq_search_page
+    displayName: FAQ Search
+    entryFulfillment:
+      messages:
+        - text:
+            text:
+              - "I can search our knowledge base for answers to your questions. What would you like to know?"
+    form:
+      parameters:
+        - name: query
+          displayName: Search Query
+          entityType: "@sys.any"
+          required: true
+    transitionRoutes:
+      - condition: $page.params.status = "FINAL"
+        targetPage: faq_search_results
+
+  # FAQ Search Results Page
+  - name: faq_search_results
+    displayName: FAQ Search Results
+    entryFulfillment:
+      setParameterActions:
+        - parameter: faq_results
+          value: $tools.search_faq($page.params.query)
+      messages:
+        - text:
+            text:
+              - "Here are some answers that might help:"
+              - "{{join(map($session.params.faq_results.results, '• ' + .question + ': ' + .answer), '\n')}}"
+              - "\n{{if($session.params.faq_results.suggested_actions, 'Suggested actions: ' + join($session.params.faq_results.suggested_actions, ', '), '')}}"
+              - "\nDid this answer your question?"
+    transitionRoutes:
+      - condition: true
+        targetPage: follow_up_question
+
+  # Create Support Ticket Page
+  - name: create_ticket_page
+    displayName: Create Support Ticket
+    entryFulfillment:
+      messages:
+        - text:
+            text:
+              - "I can create a support ticket for you. Let me gather some details about the issue."
+    form:
+      parameters:
+        - name: issue_type
+          displayName: Issue Type
+          entityType: "@sys.any"
+          required: true
+          fillBehavior:
+            initialPromptFulfillment:
+              messages:
+                - text:
+                    text:
+                      - "What type of issue are you experiencing? (technical, billing, account, feature request, bug)"
+        - name: description
+          displayName: Issue Description
+          entityType: "@sys.any"
+          required: true
+        - name: priority
+          displayName: Priority
+          entityType: "@sys.any"
+          required: false
+          defaultValue: "medium"
+    transitionRoutes:
+      - condition: $page.params.status = "FINAL"
+        targetPage: create_ticket_results
+
+  # Create Support Ticket Results Page
+  - name: create_ticket_results
+    displayName: Create Support Ticket Results
+    entryFulfillment:
+      setParameterActions:
+        - parameter: ticket_info
+          value: $tools.create_support_ticket($page.params.issue_type, $page.params.description, $page.params.priority)
+      messages:
+        - text:
+            text:
+              - "I've created a support ticket for you:"
+              - "Ticket ID: {{$session.params.ticket_info.ticket_id}}"
+              - "Status: {{$session.params.ticket_info.status}}"
+              - "{{if($session.params.ticket_info.estimated_response_time, 'Estimated response time: ' + $session.params.ticket_info.estimated_response_time, '')}}"
+              - "{{if($session.params.ticket_info.support_agent_assigned, 'A support agent has been assigned to your ticket.', 'Your ticket is in the queue.')}}"
+              - "\nYou'll receive updates via email. Is there anything else I can help with?"
+    transitionRoutes:
+      - condition: true
+        targetPage: follow_up_question
+
+  # Refund/Return Page
+  - name: refund_return_page
+    displayName: Refund or Return
+    entryFulfillment:
+      messages:
+        - text:
+            text:
+              - "I can help you start a refund or return process. Please provide your order ID."
+    form:
+      parameters:
+        - name: order_id
+          displayName: Order ID
+          entityType: "@sys.any"
+          required: true
+        - name: reason
+          displayName: Reason
+          entityType: "@sys.any"
+          required: true
+    transitionRoutes:
+      - condition: $page.params.status = "FINAL"
+        targetPage: refund_return_results
+
+  # Refund/Return Results Page
+  - name: refund_return_results
+    displayName: Refund or Return Results
+    entryFulfillment:
+      setParameterActions:
+        - parameter: refund_info
+          value: $tools.initiate_refund($page.params.order_id, $page.params.reason)
+      messages:
+        - text:
+            text:
+              - "I've started the refund/return process:"
+              - "Refund ID: {{$session.params.refund_info.refund_id}}"
+              - "Estimated amount: ${{$session.params.refund_info.estimated_amount}}"
+              - "Processing time: {{$session.params.refund_info.processing_time}}"
+              - "Instructions:"
+              - "{{join($session.params.refund_info.instructions, '\n')}}"
+              - "\nPlease follow these instructions to complete the process. Anything else I can help with?"
+    transitionRoutes:
+      - condition: true
+        targetPage: follow_up_question
+
+  # General Inquiry Page
+  - name: general_inquiry_page
+    displayName: General Inquiry
+    entryFulfillment:
+      messages:
+        - text:
+            text:
+              - "I'm here to help! Could you tell me more about what you need assistance with?"
+    transitionRoutes:
+      - condition: $session.params.intent = "product_info"
+        targetPage: product_info_page
+      - condition: $session.params.intent = "order_status"
+        targetPage: order_status_page
+      - condition: $session.params.intent = "faq_search"
+        targetPage: faq_search_page
+      - condition: $session.params.intent = "create_ticket"
+        targetPage: create_ticket_page
+      - condition: $session.params.intent = "refund_return"
+        targetPage: refund_return_page
+
+  # Follow-up Question Page
+  - name: follow_up_question
+    displayName: Follow-up Question
+    entryFulfillment:
+      messages:
+        - text:
+            text:
+              - "Is there anything else I can help you with today?"
+    transitionRoutes:
+      - condition: $session.params.intent = "yes"
+        targetPage: welcome
+      - condition: $session.params.intent = "no"
+        targetPage: end_conversation
+
+  # End Conversation Page
+  - name: end_conversation
+    displayName: End Conversation
+    entryFulfillment:
+      messages:
+        - text:
+            text:
+              - "Thank you for using SelfCheck! Have a great day!"
+              - "\n*Note: This conversation has been traced for self-improvement purposes. Your feedback helps me learn and provide better service in the future.*"

@@ -1,0 +1,100 @@
+# SelfCheck Agent Configuration
+# Google Cloud Agent Builder Configuration
+
+apiVersion: agent.cloud.google.com/v1
+kind: Agent
+metadata:
+  name: selfcheck-agent
+  displayName: SelfCheck - Self-Improving Customer Service Agent
+  description: An AI agent that traces its own performance with Arize Phoenix, identifies failure patterns, and autonomously improves its responses over time.
+  version: 1.0.0
+  labels:
+    project: google-cloud-rapid-agent-hackathon
+    track: arize
+    environment: development
+
+spec:
+  # Agent settings
+  defaultLanguageCode: en
+  timeZone: America/Los_Angeles
+  description: |
+    SelfCheck is a customer service AI agent that can learn from its own mistakes.
+    It uses Arize Phoenix to trace conversations, evaluate its own performance,
+    and improve over time without human intervention.
+
+  # LLM configuration
+  llmModelSettings:
+    model: "gemini-3.5-flash"
+    temperature: 0.2
+    topP: 0.95
+    topK: 40
+    maxOutputTokens: 1024
+
+  # Webhook settings for backend integration
+  webhook:
+    enabled: true
+    url: "https://${CLOUD_FUNCTION_URL}/webhook"
+    headers:
+      - key: "X-Agent-ID"
+        value: "selfcheck-agent"
+      - key: "Authorization"
+        value: "Bearer ${API_KEY}"
+
+  # Conversation flow settings
+  conversationSettings:
+    enableConversationHistory: true
+    conversationHistoryMaxMessages: 20
+    enableSentimentAnalysis: true
+    enableIntentRecognition: true
+
+  # Tools configuration
+  tools:
+    - name: "customer_service_tools"
+      description: "Tools for handling customer service inquiries"
+      enabled: true
+
+    - name: "self_evaluation_tools"
+      description: "Tools for self-evaluation and performance tracking"
+      enabled: true
+
+    - name: "arize_phoenix_tools"
+      description: "Tools for integrating with Arize Phoenix MCP server"
+      enabled: true
+
+  # Knowledge base configuration
+  knowledgeBases:
+    - name: "customer_service_kb"
+      description: "Customer service knowledge base"
+      sources:
+        - type: "firestore"
+          collection: "faq_entries"
+        - type: "firestore"
+          collection: "knowledge_articles"
+
+  # Safety settings
+  safetySettings:
+    - category: "HARM_CATEGORY_HARASSMENT"
+      threshold: "BLOCK_MEDIUM_AND_ABOVE"
+    - category: "HARM_CATEGORY_HATE_SPEECH"
+      threshold: "BLOCK_MEDIUM_AND_ABOVE"
+    - category: "HARM_CATEGORY_SEXUALLY_EXPLICIT"
+      threshold: "BLOCK_MEDIUM_AND_ABOVE"
+    - category: "HARM_CATEGORY_DANGEROUS_CONTENT"
+      threshold: "BLOCK_MEDIUM_AND_ABOVE"
+
+  # Logging and monitoring
+  loggingSettings:
+    enableStackdriverLogging: true
+    logLevel: "INFO"
+    enableConversationLogging: true
+    enableToolCallLogging: true
+
+  # Arize Phoenix integration
+  customSettings:
+    arize:
+      enabled: true
+      projectId: "${ARIZE_PROJECT_ID}"
+      apiKey: "${ARIZE_API_KEY}"
+      endpoint: "https://app.phoenix.arize.com"
+      tracingEnabled: true
+      evaluationEnabled: true
