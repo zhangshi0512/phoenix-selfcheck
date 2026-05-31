@@ -22,6 +22,7 @@ const { MonitoringAlerting } = require('../modules/monitoring-alerting');
 const { ABTestingFramework } = require('../modules/ab-testing');
 const { MultiLanguageSupport } = require('../modules/multi-language');
 const { ImprovementEngine } = require('../lib/improvement-engine');
+const { generateCustomerServiceResponse } = require('../lib/gemini-client');
 const { PhoenixIntrospector } = require('../modules/arize-phoenix');
 
 // Initialize modules
@@ -194,11 +195,16 @@ async function handleChat(req, res, span, startTime) {
 
   if (!query) return res.status(400).json({ error: 'query is required' });
 
+  const normalizedConversation = normalizeConversation(conversation);
+
   // Language detection & processing (with timeout)
   let userLang = preferredLang || langSupport.defaultLanguage;
   try {
     const langResult = await withTimeout(
-      langSupport.processConversation(conversation, userId),
+      langSupport.processConversation([
+        ...normalizedConversation,
+        { role: 'user', content: query, userInput: query }
+      ], userId),
       3000,
       { userLanguage: userLang, agentLanguage: userLang }
     );
@@ -237,8 +243,13 @@ async function handleChat(req, res, span, startTime) {
     };
   }
 
-  // Generate response using current improvement engine prompt as context
-  let response = generateResponse(query, knowledgeResults, userLang, improvementEngine.getCurrentPrompt());
+  // Generate response using current improvement engine prompt as LLM context,
+  // with a deterministic template fallback for local demos without Gemini keys.
+  let response = await withTimeout(
+    generateResponse(query, knowledgeResults, userLang, improvementEngine.getCurrentPrompt(), normalizedConversation),
+    8000,
+    templateGenerateResponse(query, knowledgeResults, userLang)
+  );
 
   // Apply A/B variant
   if (variant) {
@@ -258,6 +269,9 @@ async function handleChat(req, res, span, startTime) {
   const turn = {
     session: session || `session-${Date.now()}`,
     userId: userId || `user-${Date.now()}`,
+    turnNumber: normalizedConversation.length + 1,
+    userInput: query,
+    agentResponse: localizedResponse,
     query,
     response: localizedResponse,
     timestamp: new Date().toISOString(),
@@ -269,9 +283,10 @@ async function handleChat(req, res, span, startTime) {
   const evaluation = await withTimeout(
     evaluator.evaluate(query, localizedResponse, {
       conversationId: session,
-      turnNumber: (conversation.length || 0) + 1,
+      turnNumber: normalizedConversation.length + 1,
       toolsUsed: ['knowledge_search'],
-      toolSuccess: knowledgeResults.results.length > 0
+      toolSuccess: knowledgeResults.results.length > 0,
+      conversationContext: { turns: normalizedConversation }
     }),
     8000,
     { scores: { relevance: 0.5, accuracy: 0.5, helpfulness: 0.5, empathy: 0.5, efficiency: 0.5, overall: 0.5, _evaluator: 'timeout' }, metadata: {} }
@@ -285,7 +300,7 @@ async function handleChat(req, res, span, startTime) {
     withTimeout(monitoring.recordConversationMetrics({
       id: session,
       userId,
-      turns: (conversation.length || 0) + 1,
+      turns: normalizedConversation.length + 1,
       duration,
       resolved: isResolved(query, localizedResponse)
     }), 3000, null).catch(() => {});
@@ -293,17 +308,17 @@ async function handleChat(req, res, span, startTime) {
 
   // Summarize long conversations
   let summary = null;
-  if (conversation.length >= 3) {
+  if (normalizedConversation.length >= 3) {
     summary = await summarizer.summarize({
       id: session,
-      turns: [...conversation, turn]
+      turns: [...normalizedConversation, turn]
     }, { format: 'short' });
   }
 
   // Log for Arize Phoenix
   await logConversationTurn({
     conversationId: session,
-    turnNumber: (conversation.length || 0) + 1,
+    turnNumber: normalizedConversation.length + 1,
     query,
     response: localizedResponse,
     detectedLanguage: userLang,
@@ -314,7 +329,7 @@ async function handleChat(req, res, span, startTime) {
   // Store trace for Phoenix runtime introspection
   phoenixIntrospector.storeLocalTrace({
     session,
-    turnNumber: (conversation.length || 0) + 1,
+    turnNumber: normalizedConversation.length + 1,
     query,
     response: localizedResponse,
     evaluationScore: evaluation.scores.overall,
@@ -355,7 +370,7 @@ async function handleChat(req, res, span, startTime) {
     summary: summary ? { keyPoints: summary.keyPoints, actionItems: summary.actionItems } : null,
     metadata: {
       session,
-      turnNumber: (conversation.length || 0) + 1,
+      turnNumber: normalizedConversation.length + 1,
       processingTimeMs: duration,
       variant: variant?.variantId,
       promptVersion: improvementEngine.getPromptVersion(),
@@ -438,18 +453,19 @@ async function handleInitiateRefund(req, res) {
 // ----- A/B Testing -----
 async function handleExperiments(req, res) {
   const method = req.method;
-  const path = req.path;
+  const segments = getPathSegments(req.path);
+  const experimentsIndex = segments.indexOf('experiments');
+  const experimentId = experimentsIndex >= 0 ? segments[experimentsIndex + 1] : null;
+  const action = experimentsIndex >= 0 ? segments[experimentsIndex + 2] : null;
 
-  if (method === 'POST' && path.includes('start')) {
+  if (method === 'POST' && experimentId && action === 'start') {
     // POST /experiments/:id/start
-    const id = path.split('/').pop();
-    return res.json(abTesting.startExperiment(id));
+    return res.json(abTesting.startExperiment(experimentId));
   }
 
-  if (method === 'GET' && path.includes('results')) {
+  if (method === 'GET' && experimentId && action === 'results') {
     // GET /experiments/:id/results
-    const id = path.split('/')[2];
-    return res.json(abTesting.calculateResults(id));
+    return res.json(abTesting.calculateResults(experimentId));
   }
 
   if (method === 'GET') {
@@ -507,22 +523,65 @@ async function handleMonitoring(req, res) {
  * Execute a promise with a timeout. Returns fallback value if it exceeds the limit.
  */
 function withTimeout(promise, ms, fallback) {
-  return Promise.race([
-    promise,
-    new Promise(resolve => setTimeout(() => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
       console.warn(`[Webhook] Operation timed out after ${ms}ms`);
       resolve(fallback);
-    }, ms))
-  ]);
+    }, ms);
+
+    Promise.resolve(promise)
+      .then(value => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch(error => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
 
-function generateResponse(query, knowledgeResults, language, systemPrompt) {
-  // Use system prompt as context for response quality (first 150 chars as guidance)
-  const promptGuidance = systemPrompt ? systemPrompt.substring(0, 150) : '';
-  const prefix = promptGuidance ? `[Guidance: ${promptGuidance}...]\n` : '';
+function getPathSegments(path) {
+  return String(path || '')
+    .split('?')[0]
+    .split('/')
+    .filter(Boolean)
+    .filter(segment => segment !== 'api');
+}
 
+function normalizeConversation(conversation = []) {
+  if (!Array.isArray(conversation)) return [];
+
+  return conversation.map((turn, index) => ({
+    ...turn,
+    turnNumber: turn.turnNumber || index + 1,
+    userInput: turn.userInput || turn.query || (turn.role === 'user' ? turn.content : ''),
+    agentResponse: turn.agentResponse || turn.response || (turn.role === 'assistant' ? turn.content : '')
+  }));
+}
+
+async function generateResponse(query, knowledgeResults, language, systemPrompt, conversation = []) {
+  const llmResponse = await generateCustomerServiceResponse({
+    query,
+    knowledgeResults,
+    systemPrompt,
+    language,
+    conversation
+  });
+
+  return llmResponse || templateGenerateResponse(query, knowledgeResults, language);
+}
+
+function templateGenerateResponse(query, knowledgeResults, language) {
   if (!knowledgeResults.results || !knowledgeResults.results.length) {
-    return prefix + langSupport.getLocalizedApology(language) +
+    return langSupport.getLocalizedApology(language) +
       ` I don't have specific information about "${query}". Could you provide more details?`;
   }
 

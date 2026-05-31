@@ -23,7 +23,7 @@ const STOP_WORDS = new Set([
  * Extract meaningful keywords from text, removing stop words and punctuation.
  */
 function extractKeywords(text) {
-  return text.toLowerCase()
+  return String(text || '').toLowerCase()
     .replace(/[^a-z0-9\s]/g, '')
     .split(/\s+/)
     .filter(word => word.length > 2 && !STOP_WORDS.has(word));

@@ -428,8 +428,16 @@
                     <span class="eval-score-value" id="helpfulnessScore">0.00</span>
                 </div>
                 <div class="eval-score">
-                    <span class="eval-score-label">Response Time</span>
+                    <span class="eval-score-label">Efficiency</span>
                     <span class="eval-score-value" id="responseTimeScore">0.00</span>
+                </div>
+                <div class="eval-score">
+                    <span class="eval-score-label">Empathy</span>
+                    <span class="eval-score-value" id="empathyScore">0.00</span>
+                </div>
+                <div class="eval-score">
+                    <span class="eval-score-label">User Satisfaction</span>
+                    <span class="eval-score-value" id="userSatisfactionScore">0.00</span>
                 </div>
                 <div class="eval-score" style="border-bottom: none;">
                     <span class="eval-score-label" style="font-weight: 500;">Overall Score</span>
@@ -455,7 +463,7 @@
         let conversationHistory = [];
         let evaluationData = {
             total: 0,
-            scores: { relevance: 0, accuracy: 0, helpfulness: 0, efficiency: 0, overall: 0 },
+            scores: { relevance: 0, accuracy: 0, helpfulness: 0, efficiency: 0, empathy: 0, userSatisfaction: 0, overall: 0 },
             suggestions: []
         };
 
@@ -565,7 +573,11 @@
             if (metadata.processingTimeMs) {
                 const timeDiv = document.createElement('div');
                 timeDiv.className = 'message-tools';
-                timeDiv.innerHTML = `<span style="font-size:10px;color:#999;">${metadata.processingTimeMs}ms</span>`;
+                const timeSpan = document.createElement('span');
+                timeSpan.style.fontSize = '10px';
+                timeSpan.style.color = '#999';
+                timeSpan.textContent = `${metadata.processingTimeMs}ms`;
+                timeDiv.appendChild(timeSpan);
                 div.appendChild(timeDiv);
             }
 
@@ -575,47 +587,65 @@
 
         function updateEvaluation(evaluation) {
             evaluationData.total++;
-            evaluationData.scores = evaluation.scores || evaluationData.scores;
+            const scores = evaluation.dimensions || evaluation.scores || {};
+            evaluationData.scores = scores;
             evaluationData.suggestions = evaluation.suggestions || [];
 
             document.getElementById('evalCount').textContent = evaluationData.total;
 
-            const scores = evaluation.scores;
             document.getElementById('relevanceScore').textContent = (scores.relevance || 0).toFixed(2);
             document.getElementById('accuracyScore').textContent = (scores.accuracy || 0).toFixed(2);
             document.getElementById('helpfulnessScore').textContent = (scores.helpfulness || 0).toFixed(2);
             // Compatible with both Phase 1 (responseTime) and Phase 2 (efficiency)
             const rt = scores.efficiency ?? scores.responseTime ?? 0;
             document.getElementById('responseTimeScore').textContent = rt.toFixed(2);
+            document.getElementById('empathyScore').textContent = (scores.empathy || 0).toFixed(2);
+            document.getElementById('userSatisfactionScore').textContent = (scores.userSatisfaction || 0).toFixed(2);
             document.getElementById('overallScore').textContent = (scores.overall || 0).toFixed(2);
             document.getElementById('scoreBar').style.width = `${(scores.overall || 0) * 100}%`;
 
             // Update improvement suggestions
             const suggestionsContainer = document.getElementById('improvementSuggestions');
+            suggestionsContainer.replaceChildren();
             if (evaluationData.suggestions.length > 0) {
-                suggestionsContainer.innerHTML = evaluationData.suggestions.map(s => `
-                    <div class="improvement-card">
-                        <div class="type">
-                            ${(s.type || '').replace(/_/g, ' ')}
-                            <span class="priority-badge ${s.priority || 'medium'}">${s.priority || 'medium'}</span>
-                        </div>
-                        <div class="suggestion">${s.suggestion || ''}</div>
-                        ${s.affectedQueries ? `<div class="affected">Affected: ${s.affectedQueries.join(', ')}</div>` : ''}
-                    </div>
-                `).join('');
+                evaluationData.suggestions.forEach(s => {
+                    const card = document.createElement('div');
+                    card.className = 'improvement-card';
+
+                    const type = document.createElement('div');
+                    type.className = 'type';
+                    type.append(document.createTextNode((s.type || '').replace(/_/g, ' ')));
+
+                    const priority = document.createElement('span');
+                    priority.className = `priority-badge ${s.priority || 'medium'}`;
+                    priority.textContent = s.priority || 'medium';
+                    type.appendChild(priority);
+
+                    const suggestion = document.createElement('div');
+                    suggestion.className = 'suggestion';
+                    suggestion.textContent = s.suggestion || '';
+
+                    card.append(type, suggestion);
+
+                    if (s.affectedQueries) {
+                        const affected = document.createElement('div');
+                        affected.className = 'affected';
+                        affected.textContent = `Affected: ${s.affectedQueries.join(', ')}`;
+                        card.appendChild(affected);
+                    }
+
+                    suggestionsContainer.appendChild(card);
+                });
             } else {
-                suggestionsContainer.innerHTML = '<div class="meta">No suggestions yet</div>';
+                const empty = document.createElement('div');
+                empty.className = 'meta';
+                empty.textContent = 'No suggestions yet';
+                suggestionsContainer.appendChild(empty);
             }
         }
 
         // Initialize
         checkHealth();
-
-        // Auto-resize textarea
-        document.getElementById('chatInput').addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-        });
     </script>
 </body>
 </html>

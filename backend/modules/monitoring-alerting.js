@@ -8,12 +8,23 @@ const monitoring = require('@google-cloud/monitoring');
 
 const tracer = trace.getTracer('monitoring-alerting');
 
-// Initialize Monitoring client
-const client = new monitoring.MetricServiceClient();
+// Lazy-initialize Monitoring client (only when GCP credentials available)
+let client = null;
+function getMonitoringClient() {
+  if (!client) {
+    try {
+      client = new monitoring.MetricServiceClient();
+    } catch (e) {
+      console.warn('[MonitoringAlerting] Cloud Monitoring unavailable:', e.message);
+    }
+  }
+  return client;
+}
 
 class MonitoringAlerting {
   constructor(options = {}) {
     this.projectId = options.projectId || process.env.GOOGLE_CLOUD_PROJECT;
+    this.enabled = options.enabled ?? !!(this.projectId && process.env.GOOGLE_APPLICATION_CREDENTIALS);
     this.alertPolicies = new Map();
     this.metricBuffer = [];
     this.flushInterval = options.flushInterval || 60000; // 1 minute
@@ -21,8 +32,15 @@ class MonitoringAlerting {
     this.alertHandlers = new Map();
     this.notificationChannels = options.notificationChannels || [];
     
-    // Start auto-flush
-    this.flushTimer = setInterval(() => this.flushMetrics(), this.flushInterval);
+    // Start auto-flush only when Cloud Monitoring can be used.
+    this.flushTimer = this.enabled ? setInterval(() => this.flushMetrics(), this.flushInterval) : null;
+
+    // Graceful shutdown
+    if (this.flushTimer) {
+      const cleanup = () => this.destroy();
+      process.once('SIGTERM', cleanup);
+      process.once('SIGINT', cleanup);
+    }
   }
 
   /**
@@ -32,6 +50,11 @@ class MonitoringAlerting {
     const span = tracer.startSpan('record-metric');
 
     try {
+      if (!this.enabled) {
+        span.setStatus({ code: SpanStatusCode.OK });
+        return;
+      }
+
       const metric = {
         type: metricType,
         value,
@@ -186,12 +209,22 @@ class MonitoringAlerting {
    */
   async flushMetrics() {
     if (this.metricBuffer.length === 0) return;
+    if (!this.enabled) {
+      this.metricBuffer = [];
+      return;
+    }
 
     const span = tracer.startSpan('flush-metrics');
     const metrics = [...this.metricBuffer];
     this.metricBuffer = [];
 
     try {
+      const monClient = getMonitoringClient();
+      if (!monClient) {
+        // Cloud Monitoring unavailable — silently discard
+        return;
+      }
+
       const timeSeries = metrics.map(metric => ({
         metric: {
           type: metric.type,
@@ -218,11 +251,11 @@ class MonitoringAlerting {
       }));
 
       const request = {
-        name: client.projectPath(this.projectId),
+        name: monClient.projectPath(this.projectId),
         timeSeries
       };
 
-      await client.createTimeSeries(request);
+      await monClient.createTimeSeries(request);
       
       span.setAttributes({
         'metrics.flushed': metrics.length,
@@ -257,6 +290,9 @@ class MonitoringAlerting {
     } = config;
 
     try {
+      const monClient = getMonitoringClient();
+      if (!monClient) throw new Error('Cloud Monitoring unavailable');
+
       const policy = {
         displayName: name,
         documentation: {
@@ -285,11 +321,11 @@ class MonitoringAlerting {
       };
 
       const request = {
-        name: client.projectPath(this.projectId),
+        name: monClient.projectPath(this.projectId),
         alertPolicy: policy
       };
 
-      const [result] = await client.createAlertPolicy(request);
+      const [result] = await monClient.createAlertPolicy(request);
       
       this.alertPolicies.set(name, {
         id: result.name,
@@ -440,12 +476,17 @@ Average response time has exceeded 10 seconds.
    * Get current metrics snapshot
    */
   async getMetricsSnapshot() {
+    if (!this.enabled) return { error: 'Cloud Monitoring unavailable' };
+
     const now = Math.floor(Date.now() / 1000);
     const fiveMinutesAgo = now - 300;
 
     try {
+      const monClient = getMonitoringClient();
+      if (!monClient) return { error: 'Cloud Monitoring unavailable' };
+
       const request = {
-        name: client.projectPath(this.projectId),
+        name: monClient.projectPath(this.projectId),
         filter: 'metric.type = starts_with("custom.googleapis.com/selfcheck/")',
         interval: {
           startTime: { seconds: fiveMinutesAgo },
@@ -457,7 +498,7 @@ Average response time has exceeded 10 seconds.
         }
       };
 
-      const [timeSeries] = await client.listTimeSeries(request);
+      const [timeSeries] = await monClient.listTimeSeries(request);
 
       const snapshot = {
         timestamp: new Date().toISOString(),
@@ -663,7 +704,9 @@ Average response time has exceeded 10 seconds.
     for (const [name, policy] of this.alertPolicies) {
       try {
         const request = { name: policy.id };
-        const [result] = await client.getAlertPolicy(request);
+        const monClient = getMonitoringClient();
+        if (!monClient) throw new Error('Cloud Monitoring unavailable');
+        const [result] = await monClient.getAlertPolicy(request);
         
         status.push({
           name,
@@ -690,6 +733,7 @@ Average response time has exceeded 10 seconds.
   destroy() {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
+      this.flushTimer = null;
     }
     this.flushMetrics(); // Final flush
   }

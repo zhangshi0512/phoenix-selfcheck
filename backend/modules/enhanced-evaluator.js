@@ -6,6 +6,7 @@
 
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { evaluateWithLLM } = require('../lib/gemini-client');
+const { extractKeywords: sharedExtractKeywords, analyzeSentiment: sharedAnalyzeSentiment, STOP_WORDS } = require('../lib/utils');
 
 // Configuration
 const config = {
@@ -713,20 +714,7 @@ class EnhancedEvaluator {
    * Simple sentiment analysis
    */
   analyzeSentiment(text) {
-    const positive = ['thank', 'great', 'awesome', 'excellent', 'good', 'helpful',
-                      'perfect', 'love', 'amazing', 'wonderful', 'happy'];
-    const negative = ['bad', 'terrible', 'awful', 'horrible', 'worst', 'hate',
-                      'angry', 'frustrated', 'annoying', 'useless', 'broken'];
-
-    const words = text.toLowerCase().split(/\s+/);
-    let score = 0;
-
-    words.forEach(word => {
-      if (positive.includes(word)) score += 0.2;
-      if (negative.includes(word)) score -= 0.2;
-    });
-
-    return Math.max(-1, Math.min(1, score));
+    return sharedAnalyzeSentiment(text);
   }
 
   /**
@@ -788,15 +776,7 @@ class EnhancedEvaluator {
    */
   calculateInformationDensity(text) {
     const words = text.split(/\s+/);
-    const stopWords = new Set([
-      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
-      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-      'could', 'should', 'may', 'might', 'can', 'shall', 'to', 'of',
-      'in', 'for', 'on', 'with', 'at', 'by', 'from', 'and', 'or',
-      'but', 'not', 'no', 'yes', 'this', 'that', 'it', 'its'
-    ]);
-
-    const contentWords = words.filter(w => !stopWords.has(w.toLowerCase()));
+    const contentWords = words.filter(w => !STOP_WORDS.has(w.toLowerCase()));
     return words.length > 0 ? contentWords.length / words.length : 0;
   }
 
@@ -804,20 +784,7 @@ class EnhancedEvaluator {
    * Extract keywords from text
    */
   extractKeywords(text) {
-    const stopWords = new Set([
-      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
-      'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
-      'would', 'could', 'should', 'may', 'might', 'can', 'shall',
-      'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from',
-      'and', 'or', 'but', 'not', 'no', 'yes', 'this', 'that',
-      'it', 'its', 'i', 'you', 'he', 'she', 'we', 'they', 'me',
-      'him', 'her', 'us', 'them', 'my', 'your', 'his', 'our', 'their'
-    ]);
-
-    return text.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .split(/\s+/)
-      .filter(word => word.length > 2 && !stopWords.has(word));
+    return sharedExtractKeywords(text);
   }
 
   /**

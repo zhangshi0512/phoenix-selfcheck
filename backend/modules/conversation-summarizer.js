@@ -4,6 +4,7 @@
  */
 
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const { analyzeSentiment: sharedAnalyzeSentiment, describeSentiment: sharedDescribeSentiment } = require('../lib/utils');
 
 const tracer = trace.getTracer('conversation-summarizer');
 
@@ -655,40 +656,14 @@ class ConversationSummarizer {
    * Simple sentiment analysis
    */
   analyzeSentiment(text) {
-    if (!text) return 0;
-
-    const positive = [
-      'thank', 'great', 'awesome', 'excellent', 'good', 'helpful',
-      'perfect', 'love', 'amazing', 'wonderful', 'happy', 'appreciate',
-      'fantastic', 'brilliant', 'superb', 'outstanding'
-    ];
-    
-    const negative = [
-      'bad', 'terrible', 'awful', 'horrible', 'worst', 'hate',
-      'angry', 'frustrated', 'annoying', 'useless', 'broken',
-      'disappointed', 'unacceptable', 'ridiculous', 'stupid', 'wrong'
-    ];
-
-    const words = text.toLowerCase().split(/\s+/);
-    let score = 0;
-
-    words.forEach(word => {
-      if (positive.includes(word)) score += 0.25;
-      if (negative.includes(word)) score -= 0.25;
-    });
-
-    return Math.max(-1, Math.min(1, score));
+    return sharedAnalyzeSentiment(text);
   }
 
   /**
    * Describe sentiment in words
    */
   describeSentiment(score) {
-    if (score > 0.5) return 'very positive';
-    if (score > 0.2) return 'positive';
-    if (score > -0.2) return 'neutral';
-    if (score > -0.5) return 'negative';
-    return 'very negative';
+    return sharedDescribeSentiment(score);
   }
 
   /**

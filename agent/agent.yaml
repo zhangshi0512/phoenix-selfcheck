@@ -24,7 +24,7 @@ spec:
 
   # LLM configuration
   llmModelSettings:
-    model: "gemini-3.5-flash"
+    model: "gemini-2.5-flash"
     temperature: 0.2
     topP: 0.95
     topK: 40

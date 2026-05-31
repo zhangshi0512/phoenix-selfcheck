@@ -8,8 +8,18 @@ const { TranslationServiceClient } = require('@google-cloud/translate');
 
 const tracer = trace.getTracer('multi-language');
 
-// Initialize Translation client
-const translationClient = new TranslationServiceClient();
+// Lazy-initialize Translation client
+let translationClient = null;
+function getTranslationClient() {
+  if (!translationClient) {
+    try {
+      translationClient = new TranslationServiceClient();
+    } catch (e) {
+      console.warn('[MultiLanguageSupport] Translation API unavailable:', e.message);
+    }
+  }
+  return translationClient;
+}
 
 // Supported languages with metadata
 const SUPPORTED_LANGUAGES = {
@@ -85,6 +95,13 @@ class MultiLanguageSupport {
         return cached;
       }
 
+      const client = (this.projectId && process.env.GOOGLE_APPLICATION_CREDENTIALS)
+        ? getTranslationClient()
+        : null;
+      if (!client) {
+        return this.fallbackDetectLanguage(text);
+      }
+
       // Use Google Cloud Translation API
       const request = {
         parent: `projects/${this.projectId}/locations/global`,
@@ -92,7 +109,7 @@ class MultiLanguageSupport {
         mimeType: 'text/plain'
       };
 
-      const [response] = await translationClient.detectLanguage(request);
+      const [response] = await client.detectLanguage(request);
       
       if (!response.languages || response.languages.length === 0) {
         return { language: this.defaultLanguage, confidence: 0 };
@@ -181,6 +198,13 @@ class MultiLanguageSupport {
         return cached;
       }
 
+      const client = (this.projectId && process.env.GOOGLE_APPLICATION_CREDENTIALS)
+        ? getTranslationClient()
+        : null;
+      if (!client) {
+        return { translatedText: text, sourceLanguage: sourceLanguage || 'unknown', targetLanguage, confidence: 0, error: 'Translation API unavailable' };
+      }
+
       // Use Google Cloud Translation API
       const request = {
         parent: `projects/${this.projectId}/locations/global`,
@@ -190,7 +214,7 @@ class MultiLanguageSupport {
         targetLanguageCode: targetLanguage
       };
 
-      const [response] = await translationClient.translateText(request);
+      const [response] = await client.translateText(request);
       
       if (!response.translations || response.translations.length === 0) {
         throw new Error('Translation failed');
@@ -496,8 +520,16 @@ class MultiLanguageSupport {
         result.preferenceSource = preference.source;
       }
 
-      // Detect language from user messages
-      const userMessages = conversation.filter(msg => msg.role === 'user');
+      // Detect language from user messages. Supports both message-shaped
+      // history ({ role, content }) and turn-shaped history ({ userInput }).
+      const userMessages = conversation
+        .map(msg => {
+          if (msg.role === 'user') return { content: msg.content || msg.userInput || msg.query || '' };
+          if (msg.userInput || msg.query) return { content: msg.userInput || msg.query };
+          return null;
+        })
+        .filter(Boolean)
+        .filter(msg => msg.content);
       for (const message of userMessages) {
         const detection = await this.detectLanguage(message.content);
         result.detectedLanguages.push({

@@ -9,6 +9,7 @@ const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { Resource } = require('@opentelemetry/resources');
 const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { extractKeywords: sharedExtractKeywords } = require('../lib/utils');
 
 // Configuration
 const config = {
@@ -269,21 +270,7 @@ class SelfEvaluator {
    * Extract keywords from text
    */
   extractKeywords(text) {
-    const stopWords = new Set([
-      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
-      'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
-      'would', 'could', 'should', 'may', 'might', 'can', 'shall',
-      'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from',
-      'and', 'or', 'but', 'not', 'no', 'yes', 'this', 'that',
-      'it', 'its', 'i', 'you', 'he', 'she', 'we', 'they', 'me',
-      'how', 'what', 'when', 'where', 'why', 'who', 'which',
-      'him', 'her', 'us', 'them', 'my', 'your', 'his', 'our', 'their'
-    ]);
-
-    return text.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .split(/\s+/)
-      .filter(word => word.length > 2 && !stopWords.has(word));
+    return sharedExtractKeywords(text);
   }
 
   /**

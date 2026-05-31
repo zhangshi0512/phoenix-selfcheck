@@ -17,11 +17,17 @@ let inMemoryCurrentPrompt = null;
 let inMemoryStrategies = [];
 let inMemoryLastImprovement = null;
 
+function canUseFirestore() {
+  return !!(process.env.FIRESTORE_EMULATOR_HOST || process.env.GOOGLE_APPLICATION_CREDENTIALS);
+}
+
 let firestore = null;
-try {
-  firestore = new Firestore();
-} catch (e) {
-  console.warn('[ImprovementEngine] Firestore unavailable, using in-memory storage');
+if (canUseFirestore()) {
+  try {
+    firestore = new Firestore();
+  } catch (e) {
+    console.warn('[ImprovementEngine] Firestore unavailable, using in-memory storage');
+  }
 }
 
 const STRATEGIES_COLLECTION = 'improvement_strategies';

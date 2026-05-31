@@ -5,9 +5,21 @@
 
 const { Firestore } = require('@google-cloud/firestore');
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const { extractKeywords: sharedExtractKeywords } = require('../lib/utils');
 
-// Initialize clients
-const firestore = new Firestore();
+function canUseFirestore() {
+  return !!(process.env.FIRESTORE_EMULATOR_HOST || process.env.GOOGLE_APPLICATION_CREDENTIALS);
+}
+
+// Initialize clients only when GCP credentials or a Firestore emulator are available.
+let firestore = null;
+if (canUseFirestore()) {
+  try {
+    firestore = new Firestore();
+  } catch (e) {
+    console.warn('[KnowledgeBase] Firestore unavailable, using demo fallback only');
+  }
+}
 const tracer = trace.getTracer('knowledge-base');
 
 // Collection references
@@ -182,6 +194,7 @@ class KnowledgeBase {
    */
   async searchFAQ(query, category, maxResults) {
     try {
+      if (!firestore) return [];
       let queryRef = firestore.collection(FAQ_COLLECTION);
 
       // Build query
@@ -229,6 +242,7 @@ class KnowledgeBase {
    */
   async searchArticles(query, category, maxResults) {
     try {
+      if (!firestore) return [];
       let queryRef = firestore.collection(KNOWLEDGE_COLLECTION);
 
       if (category) {
@@ -282,6 +296,12 @@ class KnowledgeBase {
       const cacheKey = `product:${productId}`;
       const cached = this.getFromCache(cacheKey);
       if (cached) return cached;
+
+      if (!firestore) {
+        return this.demoFallbackEnabled
+          ? DEMO_PRODUCTS[productId] || this.findDemoProduct(productId)
+          : null;
+      }
 
       const docRef = firestore.collection(PRODUCT_COLLECTION).doc(productId);
       const doc = await docRef.get();
@@ -337,6 +357,15 @@ class KnowledgeBase {
       const cached = this.getFromCache(cacheKey);
       if (cached) return cached;
 
+      if (!firestore) {
+        const order = this.demoFallbackEnabled ? DEMO_ORDERS[orderId] : null;
+        if (!order) return null;
+        if (email && order.customerEmail !== email) {
+          return { error: 'Email does not match order', status: 'unverified' };
+        }
+        return order;
+      }
+
       const docRef = firestore.collection(ORDER_COLLECTION).doc(orderId);
       const doc = await docRef.get();
 
@@ -389,6 +418,15 @@ class KnowledgeBase {
     const span = tracer.startSpan('create-support-ticket');
 
     try {
+      if (!firestore && this.demoFallbackEnabled) {
+        return {
+          ticketId: `DEMO-${Date.now()}`,
+          status: 'open',
+          estimatedResponseTime: this.getEstimatedResponseTime(ticketData.priority || 'medium'),
+          supportAgentAssigned: false
+        };
+      }
+
       const ticket = {
         issueType: ticketData.issueType,
         description: ticketData.description,
@@ -443,6 +481,19 @@ class KnowledgeBase {
       const order = await this.getOrderStatus(refundData.orderId);
       if (!order) {
         throw new Error('Order not found');
+      }
+
+      if (!firestore && this.demoFallbackEnabled) {
+        return {
+          refundId: `DEMO-REFUND-${Date.now()}`,
+          estimatedAmount: order.totalAmount || 0,
+          processingTime: '7-10 business days',
+          instructions: [
+            'Package the item securely.',
+            'Include the return authorization email.',
+            'Keep tracking information for your records.'
+          ]
+        };
       }
 
       const refund = {
@@ -501,6 +552,9 @@ class KnowledgeBase {
    * Add new knowledge article
    */
   async addKnowledgeArticle(article) {
+    if (!firestore) {
+      return { id: `DEMO-ARTICLE-${Date.now()}`, warning: 'Firestore unavailable, article not persisted' };
+    }
     const docRef = await firestore.collection(KNOWLEDGE_COLLECTION).add({
       title: article.title,
       content: article.content,
@@ -525,6 +579,9 @@ class KnowledgeBase {
    * Update knowledge article
    */
   async updateKnowledgeArticle(articleId, updates) {
+    if (!firestore) {
+      return { id: articleId, updated: false, warning: 'Firestore unavailable' };
+    }
     const docRef = firestore.collection(KNOWLEDGE_COLLECTION).doc(articleId);
     
     await docRef.update({
@@ -542,6 +599,7 @@ class KnowledgeBase {
    * Record article helpfulness feedback
    */
   async recordArticleFeedback(articleId, helpful) {
+    if (!firestore) return;
     const docRef = firestore.collection(KNOWLEDGE_COLLECTION).doc(articleId);
     
     await firestore.runTransaction(async (transaction) => {
@@ -625,19 +683,7 @@ class KnowledgeBase {
    * Extract keywords from query
    */
   extractKeywords(query) {
-    const stopWords = new Set([
-      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
-      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-      'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from',
-      'and', 'or', 'but', 'not', 'no', 'yes', 'this', 'that', 'it',
-      'i', 'you', 'he', 'she', 'we', 'they', 'me', 'my', 'your',
-      'how', 'what', 'when', 'where', 'why', 'who', 'which', 'can'
-    ]);
-
-    return query.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .split(/\s+/)
-      .filter(word => word.length > 2 && !stopWords.has(word));
+    return sharedExtractKeywords(query);
   }
 
   /**
@@ -772,6 +818,9 @@ class KnowledgeBase {
    * Get knowledge base statistics
    */
   async getStatistics() {
+    if (!firestore) {
+      return { faqs: 0, articles: 0, products: 0, source: 'demo_fallback', lastUpdated: new Date().toISOString() };
+    }
     try {
       const [faqCount, articleCount, productCount] = await Promise.all([
         firestore.collection(FAQ_COLLECTION).where('active', '==', true).count().get(),

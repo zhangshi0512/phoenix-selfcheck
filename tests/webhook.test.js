@@ -4,6 +4,14 @@
  */
 
 const { SelfEvaluator, ConversationTracer } = require('../backend/modules/arize-phoenix');
+const { EnhancedEvaluator } = require('../backend/modules/enhanced-evaluator');
+
+jest.mock('../backend/lib/gemini-client', () => ({
+  evaluateWithLLM: jest.fn().mockResolvedValue(null),
+  generateImprovedPrompt: jest.fn().mockResolvedValue(null),
+  generateCustomerServiceResponse: jest.fn().mockResolvedValue(null),
+  hasGeminiApiKey: jest.fn().mockReturnValue(false)
+}));
 
 // Mock Google Cloud dependencies
 jest.mock('@google-cloud/logging', () => ({
@@ -177,6 +185,45 @@ describe('ConversationTracer', () => {
     tracer.startTurn('First message');
     tracer.startTurn('Second message');
     expect(tracer.turnCount).toBe(2);
+  });
+});
+
+describe('EnhancedEvaluator', () => {
+  let evaluator;
+
+  beforeEach(() => {
+    evaluator = new EnhancedEvaluator();
+  });
+
+  test('should evaluate with active Phase 2 dimensions', async () => {
+    const result = await evaluator.evaluate(
+      'I am frustrated and need a refund',
+      'I apologize for the inconvenience. You can start a refund from billing settings or contact support.',
+      {
+        conversationId: 'phase2-test',
+        turnNumber: 1,
+        toolsUsed: ['knowledge_search'],
+        toolSuccess: true,
+        responseTime: 1200
+      }
+    );
+
+    expect(result.scores).toHaveProperty('relevance');
+    expect(result.scores).toHaveProperty('accuracy');
+    expect(result.scores).toHaveProperty('helpfulness');
+    expect(result.scores).toHaveProperty('empathy');
+    expect(result.scores).toHaveProperty('efficiency');
+    expect(result.scores).toHaveProperty('userSatisfaction');
+    expect(result.scores).toHaveProperty('overall');
+    expect(result.scores._evaluator).toBe('rule-based');
+    expect(evaluator.evaluationHistory).toHaveLength(1);
+  });
+
+  test('should use shared keyword extraction', () => {
+    const keywords = evaluator.extractKeywords('How do I reset my password for the customer portal?');
+    expect(keywords).toEqual(expect.arrayContaining(['reset', 'password', 'customer', 'portal']));
+    expect(keywords).not.toContain('how');
+    expect(keywords).not.toContain('the');
   });
 });
 
