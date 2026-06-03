@@ -29,7 +29,7 @@ steps:
           --timeout 120s \
           --min-instances 0 \
           --max-instances 10 \
-          --set-env-vars "GEMINI_API_KEY=$_GEMINI_API_KEY,GOOGLE_API_KEY=$_GEMINI_API_KEY,ARIZE_PROJECT_ID=$_ARIZE_PROJECT_ID,ARIZE_API_KEY=$_ARIZE_API_KEY,WEBHOOK_API_KEY=$_WEBHOOK_API_KEY,NODE_ENV=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID"
+          --set-env-vars "GEMINI_API_KEY=$_GEMINI_API_KEY,GOOGLE_API_KEY=$_GEMINI_API_KEY,ARIZE_ENDPOINT=$_ARIZE_ENDPOINT,ARIZE_PROJECT_ID=$_ARIZE_PROJECT_ID,ARIZE_API_KEY=$_ARIZE_API_KEY,WEBHOOK_API_KEY=$_WEBHOOK_API_KEY,NODE_ENV=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID"
 
 # Build options
 options:
@@ -41,6 +41,7 @@ timeout: 1200s
 # Substitute variables (set in Cloud Build trigger)
 substitutions:
   _GEMINI_API_KEY: ''
-  _ARIZE_PROJECT_ID: ''
+  _ARIZE_ENDPOINT: ''
+  _ARIZE_PROJECT_ID: 'default'
   _ARIZE_API_KEY: ''
   _WEBHOOK_API_KEY: ''

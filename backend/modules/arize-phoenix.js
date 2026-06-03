@@ -11,14 +11,40 @@ const { Resource } = require('@opentelemetry/resources');
 const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
 const { extractKeywords: sharedExtractKeywords } = require('../lib/utils');
 
-// Configuration
+const LOCAL_PHOENIX_ENDPOINT = 'http://localhost:6006';
+
+function resolveEndpoint() {
+  const explicit = process.env.ARIZE_ENDPOINT;
+  if (explicit) return explicit.replace(/\/$/, '');
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://app.phoenix.arize.com';
+  }
+  return LOCAL_PHOENIX_ENDPOINT;
+}
+
+function isLocalPhoenixEndpoint(endpoint) {
+  return /localhost|127\.0\.0\.1/i.test(endpoint);
+}
+
+/** OTLP headers for Phoenix Cloud; omitted for local Phoenix (no auth by default). */
+function buildOtlpHeaders(apiKey, projectId) {
+  if (!apiKey) return {};
+  return {
+    api_key: apiKey,
+    project_id: projectId
+  };
+}
+
+// Configuration (defaults: local Phoenix, no API key)
 const config = {
-  projectId: process.env.ARIZE_PROJECT_ID || 'selfcheck-dev',
-  apiKey: process.env.ARIZE_API_KEY || '',
-  endpoint: process.env.ARIZE_ENDPOINT || 'https://app.phoenix.arize.com',
+  projectId: process.env.ARIZE_PROJECT_ID || 'default',
+  apiKey: (process.env.ARIZE_API_KEY || '').trim(),
+  endpoint: resolveEndpoint(),
   serviceName: 'selfcheck-agent',
-  environment: process.env.NODE_ENV || 'development'
+  environment: process.env.NODE_ENV || 'development',
+  localMode: false
 };
+config.localMode = isLocalPhoenixEndpoint(config.endpoint) && !config.apiKey;
 
 // Initialize tracer provider
 const provider = new NodeTracerProvider({
@@ -32,10 +58,7 @@ const provider = new NodeTracerProvider({
 // Configure OTLP exporter for Arize Phoenix
 const exporter = new OTLPTraceExporter({
   url: `${config.endpoint}/v1/traces`,
-  headers: {
-    'api_key': config.apiKey,
-    'project_id': config.projectId
-  }
+  headers: buildOtlpHeaders(config.apiKey, config.projectId)
 });
 
 provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
@@ -425,9 +448,10 @@ class SelfEvaluator {
  */
 class PhoenixIntrospector {
   constructor() {
-    this.endpoint = process.env.ARIZE_ENDPOINT || 'https://app.phoenix.arize.com';
-    this.apiKey = process.env.ARIZE_API_KEY || '';
-    this.projectId = process.env.ARIZE_PROJECT_ID || '';
+    this.endpoint = config.endpoint;
+    this.apiKey = config.apiKey;
+    this.projectId = config.projectId || 'default';
+    this.localMode = config.localMode;
     this.localTraceBuffer = [];
   }
 
@@ -460,21 +484,23 @@ class PhoenixIntrospector {
       };
     }
 
-    // Fallback: use local trace buffer
+    // Local mode or cloud API unavailable: use in-app trace buffer
     return {
-      source: 'local_fallback',
+      source: this.localMode ? 'local_buffer' : 'local_fallback',
       analyzedAt: new Date().toISOString(),
       localTraceCount: this.localTraceBuffer.length,
       recentTraces: this.localTraceBuffer.slice(-10),
-      message: 'Phoenix API unavailable, using local trace buffer'
+      message: this.localMode
+        ? 'Local Phoenix mode (no API key); traces also sent to OTLP at ' + this.endpoint
+        : 'Phoenix API unavailable, using local trace buffer'
     };
   }
 
   /**
-   * Attempt to query Phoenix API for recent traces.
+   * Attempt to query Phoenix API for recent traces (Phoenix Cloud with API key only).
    */
   async queryPhoenixTraces() {
-    if (!this.apiKey || !this.projectId) return null;
+    if (this.localMode || !this.apiKey) return null;
 
     try {
       const response = await fetch(`${this.endpoint}/v1/spans`, {

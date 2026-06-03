@@ -6,7 +6,7 @@
   "scripts": {
     "start": "functions-framework --target=webhook --port=8080",
     "dev": "nodemon --exec \"npm start\"",
-    "deploy": "gcloud functions deploy selfcheck-webhook --runtime nodejs20 --trigger-http --allow-unauthenticated --set-env-vars=ARIZE_API_KEY=$ARIZE_API_KEY,ARIZE_PROJECT_ID=$ARIZE_PROJECT_ID",
+    "deploy": "gcloud functions deploy selfcheck-webhook --runtime nodejs20 --trigger-http --allow-unauthenticated --set-env-vars=ARIZE_ENDPOINT=$ARIZE_ENDPOINT,ARIZE_API_KEY=$ARIZE_API_KEY,ARIZE_PROJECT_ID=$ARIZE_PROJECT_ID",
     "test": "jest",
     "lint": "eslint functions/**/*.js",
     "format": "prettier --write functions/**/*.js"

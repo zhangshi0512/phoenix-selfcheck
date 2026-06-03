@@ -46,29 +46,43 @@ Express dev server or Cloud Function webhook
 npm install
 ```
 
-2. Create `.env` from `.env.example` and fill in at least:
+2. Start **local Arize Phoenix** (no cloud account or API key):
+
+```bash
+pip install arize-phoenix
+phoenix serve
+```
+
+Phoenix UI: `http://localhost:6006`
+
+3. Create `.env` from `.env.example` and fill in at least:
 
 ```bash
 GEMINI_API_KEY=...
 GOOGLE_API_KEY=...
 GOOGLE_CLOUD_PROJECT=...
-ARIZE_PROJECT_ID=...
-ARIZE_API_KEY=...
 WEBHOOK_API_KEY=...
 NODE_ENV=development
+# Phoenix defaults in .env.example (localhost:6006, no API key)
 ```
 
-3. Start the local server:
+4. Start the local server (with Phoenix still running):
 
 ```bash
 npm start
 ```
 
-4. Open the dashboard:
+5. Open the dashboard:
 
 ```text
 http://localhost:8080/dashboard.html
 ```
+
+Traces are exported via OpenTelemetry to `http://localhost:6006/v1/traces`. Runtime introspection uses an in-app trace buffer when no API key is set (see `PhoenixIntrospector` in `backend/modules/arize-phoenix.js`).
+
+### Phoenix Cloud (optional)
+
+To use hosted Phoenix instead of `phoenix serve`, set `ARIZE_ENDPOINT=https://app.phoenix.arize.com`, `ARIZE_API_KEY`, and `ARIZE_PROJECT_ID` in `.env`.
 
 ## Verification
 
@@ -89,7 +103,7 @@ npm run lint
 - Public repository with license
 - Deployed Cloud Function URL
 - Agent Builder app configured to call the webhook
-- Arize Phoenix project receiving traces
+- Arize Phoenix receiving traces (local `phoenix serve` or Phoenix Cloud)
 - Firestore seeded with FAQ, products, and orders
 - Demo dashboard working against production
 - Three-minute demo video showing before/after improvement

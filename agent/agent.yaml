@@ -89,12 +89,12 @@ spec:
     enableConversationLogging: true
     enableToolCallLogging: true
 
-  # Arize Phoenix integration
+  # Arize Phoenix integration (local by default; phoenix serve on :6006)
   customSettings:
     arize:
       enabled: true
-      projectId: "${ARIZE_PROJECT_ID}"
-      apiKey: "${ARIZE_API_KEY}"
-      endpoint: "https://app.phoenix.arize.com"
+      projectId: "${ARIZE_PROJECT_ID:-default}"
+      apiKey: "${ARIZE_API_KEY:-}"
+      endpoint: "${ARIZE_ENDPOINT:-http://localhost:6006}"
       tracingEnabled: true
       evaluationEnabled: true

@@ -25,9 +25,9 @@ variable "arize_api_key" {
 }
 
 variable "arize_endpoint" {
-  description = "Arize Phoenix OTLP/API endpoint"
+  description = "Arize Phoenix OTLP/API endpoint (override for Phoenix Cloud or self-hosted)"
   type        = string
-  default     = "https://app.phoenix.arize.com"
+  default     = "http://localhost:6006"
 }
 
 variable "gemini_api_key" {
